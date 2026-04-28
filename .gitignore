@@ -44,3 +44,4 @@ replay_pid*
 
 # Mobile Tools for Java
 .mtj.tmp/
+src/.DS_Store
