@@ -98,6 +98,49 @@ public class AuctionPlatformController {
         return agentName;
     }
 
+    public synchronized List<String> getRemovableAgentNames() {
+        List<String> names = new ArrayList<String>();
+
+        names.addAll(dealerListings.keySet());
+        names.addAll(buyerProfiles.keySet());
+
+        return names;
+    }
+
+    public synchronized boolean deleteAgent(String agentName) {
+        if (agentName == null || agentName.trim().isEmpty()) {
+            AuctionLog.warn("System", "No agent name was provided for deletion.");
+            return false;
+        }
+
+        String cleanName = agentName.trim();
+
+        if (cleanName.equals(brokerName)) {
+            AuctionLog.warn("System", "Broker agent cannot be deleted individually. Use Reset Platform instead.");
+            return false;
+        }
+
+        AgentController agentController = activeAgents.get(cleanName);
+
+        if (agentController == null) {
+            AuctionLog.warn("System", "Agent " + cleanName + " was not found.");
+            return false;
+        }
+
+        try {
+            agentController.kill();
+        } catch (Exception e) {
+            AuctionLog.warn("System", "Tried to kill " + cleanName + ", but JADE reported: " + e.getMessage());
+        }
+
+        activeAgents.remove(cleanName);
+        dealerListings.remove(cleanName);
+        buyerProfiles.remove(cleanName);
+
+        AuctionLog.info("System", "Deleted agent " + cleanName + " from the auction floor.");
+        return true;
+    }
+
     public void launchDemoScenario() throws Exception {
         ensurePlatformStarted();
 

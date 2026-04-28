@@ -4,7 +4,7 @@ import gui.ManualNegotiationUI;
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
-import jade.core.behaviours.OneShotBehaviour;
+import jade.core.behaviours.TickerBehaviour;
 import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
@@ -32,6 +32,15 @@ public class BuyerAgent extends Agent {
 
     private AID brokerAID;
 
+    // This prevents the buyer from repeatedly forwarding interest after dealers are already found.
+    private boolean interestAlreadyForwarded = false;
+
+    // Retry control for broker matching.
+    // If a buyer joins before dealers exist, the buyer will retry instead of stopping permanently.
+    private int matchRequestAttempts = 0;
+    private static final int MAX_MATCH_REQUEST_ATTEMPTS = 10;
+    private static final long MATCH_RETRY_INTERVAL_MS = 2000L;
+
     private final Map<AID, Double> previousDealerPrices = new HashMap<>();
 
     @Override
@@ -55,15 +64,19 @@ public class BuyerAgent extends Agent {
             }
 
             if (args.length > 5 && args[5] != null) {
-                // Handle both Boolean objects and "true"/"false" strings
                 String val = args[5].toString();
                 isManualMode = val.equalsIgnoreCase("true");
             }
         }
 
-        AuctionLog.info(getLocalName(), "Seeking " + targetMake + " " + targetModel + " | Budget: RM" + maxPrice + " | Mode: " + (isManualMode ? "Manual" : "Auto"));
+        AuctionLog.info(
+                getLocalName(),
+                "Seeking " + targetMake + " " + targetModel
+                        + " | Budget: RM" + maxPrice
+                        + " | Mode: " + (isManualMode ? "Manual" : "Auto")
+        );
 
-        addBehaviour(new RequestDealersFromBroker());
+        addBehaviour(new RequestDealersFromBrokerRetry(this, MATCH_RETRY_INTERVAL_MS));
         addBehaviour(new ReceiveMatchingDealers());
 
         MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.CFP);
@@ -76,9 +89,31 @@ public class BuyerAgent extends Agent {
         });
     }
 
-    private class RequestDealersFromBroker extends OneShotBehaviour {
+    private class RequestDealersFromBrokerRetry extends TickerBehaviour {
+
+        public RequestDealersFromBrokerRetry(Agent agent, long period) {
+            super(agent, period);
+        }
+
         @Override
-        public void action() {
+        protected void onTick() {
+            if (interestAlreadyForwarded) {
+                stop();
+                return;
+            }
+
+            if (matchRequestAttempts >= MAX_MATCH_REQUEST_ATTEMPTS) {
+                AuctionLog.warn(
+                        getLocalName(),
+                        "Stopped searching after " + MAX_MATCH_REQUEST_ATTEMPTS
+                                + " broker match attempts. No suitable dealer found."
+                );
+                stop();
+                return;
+            }
+
+            matchRequestAttempts++;
+
             DFAgentDescription template = new DFAgentDescription();
             ServiceDescription sd = new ServiceDescription();
 
@@ -98,13 +133,23 @@ public class BuyerAgent extends Agent {
 
                     myAgent.send(msg);
 
-                    AuctionLog.info(getLocalName(), "Requested dealers from broker.");
+                    AuctionLog.info(
+                            getLocalName(),
+                            "Requested dealers from broker. Attempt "
+                                    + matchRequestAttempts + "/"
+                                    + MAX_MATCH_REQUEST_ATTEMPTS
+                    );
                 } else {
-                    AuctionLog.warn(getLocalName(), "No broker found.");
+                    AuctionLog.warn(
+                            getLocalName(),
+                            "No broker found. Attempt "
+                                    + matchRequestAttempts + "/"
+                                    + MAX_MATCH_REQUEST_ATTEMPTS
+                    );
                 }
 
             } catch (FIPAException e) {
-                e.printStackTrace();
+                AuctionLog.error(getLocalName(), "Failed to search for broker: " + e.getMessage());
             }
         }
     }
@@ -126,6 +171,10 @@ public class BuyerAgent extends Agent {
                     AuctionLog.info(getLocalName(), "Broker matched " + availableDealers.size() + " dealers.");
 
                     if (!availableDealers.isEmpty()) {
+                        // Once matching dealers are found, prevent duplicate interest messages
+                        // from future retry ticks.
+                        interestAlreadyForwarded = true;
+
                         StringBuilder sb = new StringBuilder(
                                 targetMake + "," + targetModel + "," + initialOffer
                         );
@@ -144,9 +193,16 @@ public class BuyerAgent extends Agent {
 
                         myAgent.send(interest);
 
-                        AuctionLog.info(getLocalName(), "Interest forwarded via broker.");
+                        AuctionLog.info(
+                                getLocalName(),
+                                "Interest forwarded via broker to " + limit + " dealer(s)."
+                        );
+                    } else {
+                        AuctionLog.warn(
+                                getLocalName(),
+                                "Broker matched 0 dealers. Waiting for future dealer listings..."
+                        );
                     }
-
                 } catch (UnreadableException e) {
                     e.printStackTrace();
                 }

@@ -1,5 +1,6 @@
 package agents;
 
+import analytics.AnalyticsStore;
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
@@ -98,8 +99,33 @@ public class DealerAgent extends Agent {
                             
                             // Dealer starts first: offer at List Price
                             cfp.setContent(make + "," + model + "," + car.getPrice() + ",0"); // Make,Model,Price,Round
-                            
-                            myAgent.addBehaviour(new DealerNegotiator(myAgent, cfp, car.getPrice(), 0, buyerName, make, model, car.getPrice(), buyerInitialOffer));
+
+                            String sessionId = getLocalName() + "-" + buyerName;
+
+                            // Record round 0 so the graph starts with the buyer's first offer
+                            // and the dealer's first asking price.
+                            AnalyticsStore.recordRound(
+                                    sessionId,
+                                    buyerName,
+                                    getLocalName(),
+                                    0,
+                                    buyerInitialOffer,
+                                    car.getPrice(),
+                                    "STARTED"
+                            );
+
+                            myAgent.addBehaviour(new DealerNegotiator(
+                                    myAgent,
+                                    cfp,
+                                    car.getPrice(),
+                                    0,
+                                    buyerName,
+                                    make,
+                                    model,
+                                    car.getPrice(),
+                                    buyerInitialOffer,
+                                    sessionId
+                            ));
                         } else {
                             AuctionLog.warn(getLocalName(), "Lead from " + buyerName + " (RM" + buyerInitialOffer + ") too low. Ignoring.");
                         }
@@ -119,8 +145,20 @@ public class DealerAgent extends Agent {
         private String model;
         private double lastDealerOffer;
         private double lastBuyerOffer;
+        private String sessionId;
 
-        public DealerNegotiator(Agent a, ACLMessage cfp, double listPrice, int round, String buyerName, String make, String model, double lastDealerOffer, double lastBuyerOffer) {
+        public DealerNegotiator(
+                Agent a,
+                ACLMessage cfp,
+                double listPrice,
+                int round,
+                String buyerName,
+                String make,
+                String model,
+                double lastDealerOffer,
+                double lastBuyerOffer,
+                String sessionId
+        ) {
             super(a, cfp);
             this.listPrice = listPrice;
             this.round = round;
@@ -129,6 +167,7 @@ public class DealerAgent extends Agent {
             this.model = model;
             this.lastDealerOffer = lastDealerOffer;
             this.lastBuyerOffer = lastBuyerOffer;
+            this.sessionId = sessionId;
         }
 
         @Override
@@ -155,7 +194,9 @@ public class DealerAgent extends Agent {
                             ACLMessage informBroker = new ACLMessage(ACLMessage.INFORM);
                             informBroker.addReceiver(brokerAID);
                             informBroker.setConversationId("successful-deal");
-                            informBroker.setContent(String.valueOf(currentBuyerOffer));
+                            // Send both session ID and final price to the broker.
+                            // Format: sessionId,finalPrice
+                            informBroker.setContent(sessionId + "," + currentBuyerOffer);
                             myAgent.send(informBroker);
                         }
 
@@ -185,16 +226,57 @@ public class DealerAgent extends Agent {
                         newCfp.setProtocol(jade.domain.FIPANames.InteractionProtocol.FIPA_CONTRACT_NET);
                         newCfp.setConversationId("nego-" + buyerName + "-" + System.currentTimeMillis());
                         newCfp.setContent(make + "," + model + "," + nextDealerPrice + "," + (round + 1));
-                        
-                        myAgent.addBehaviour(new DealerNegotiator(myAgent, newCfp, listPrice, round + 1, buyerName, make, model, nextDealerPrice, currentBuyerOffer));
-                        AuctionLog.info(getLocalName(), "Countering RM" + nextDealerPrice + " (Round " + (round+1) + ")");
+
+                        // Record the dealer's next counter-offer.
+                        // This shows the gap narrowing on the chart.
+                        AnalyticsStore.recordRound(
+                                sessionId,
+                                buyerName,
+                                myAgent.getLocalName(),
+                                round + 1,
+                                currentBuyerOffer,
+                                nextDealerPrice,
+                                "DEALER_COUNTERED"
+                        );
+
+                        myAgent.addBehaviour(new DealerNegotiator(
+                                myAgent,
+                                newCfp,
+                                listPrice,
+                                round + 1,
+                                buyerName,
+                                make,
+                                model,
+                                nextDealerPrice,
+                                currentBuyerOffer,
+                                sessionId
+                        ));
+
+                        AuctionLog.info(getLocalName(), "Countering RM" + nextDealerPrice + " (Round " + (round + 1) + ")");
+
+                        // Record the buyer's proposal against the dealer's current ask.
+                        // This is used by the real-time negotiation line chart.
+                        AnalyticsStore.recordRound(
+                                sessionId,
+                                buyerName,
+                                myAgent.getLocalName(),
+                                round,
+                                currentBuyerOffer,
+                                lastDealerOffer,
+                                "BUYER_PROPOSED"
+                        );
                     } else {
                         // Max rounds
                         reply.setPerformative(ACLMessage.REJECT_PROPOSAL);
                         reply.setContent("WALKAWAY");
                         AuctionLog.warn(getLocalName(), "Max rounds reached. Walking away from " + buyerName);
+                        AnalyticsStore.recordFailedDeal(sessionId);
                     }
                     acceptances.add(reply);
+                }
+                else if (msg.getPerformative() == ACLMessage.REFUSE) {
+                    AnalyticsStore.recordFailedDeal(sessionId);
+                    AuctionLog.warn(getLocalName(), buyerName + " refused the negotiation.");
                 }
             }
         }
@@ -224,5 +306,23 @@ public class DealerAgent extends Agent {
     private Car findCar(String make, String model) {
         for (Car car : catalog) if (car.getMake().equalsIgnoreCase(make) && car.getModel().equalsIgnoreCase(model)) return car;
         return null;
+    }
+
+    @Override
+    protected void takeDown() {
+        if (brokerAID != null) {
+            ACLMessage msg = new ACLMessage(ACLMessage.INFORM);
+            msg.addReceiver(brokerAID);
+            msg.setConversationId("dealer-remove");
+            msg.setContent(getLocalName());
+            send(msg);
+        }
+
+        AuctionLog.warn(getLocalName(), "Dealer agent is leaving the auction floor.");
+
+        try {
+            DFService.deregister(this);
+        } catch (Exception ignored) {
+        }
     }
 }

@@ -1,5 +1,6 @@
 package agents;
 
+import analytics.AnalyticsStore;
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
@@ -52,6 +53,7 @@ public class BrokerAgent extends Agent {
         addBehaviour(new ForwardBuyerInterests());
         addBehaviour(new CollectCommissions());
         addBehaviour(new ListenForDealerLeadAcceptance());
+        addBehaviour(new ListenForDealerRemoval());
     }
 
     private class ReceiveCatalogsBehaviour extends CyclicBehaviour {
@@ -133,16 +135,31 @@ public class BrokerAgent extends Agent {
                     AuctionLog.info("Broker (KA)", "Forwarding interest from " + msg.getSender().getLocalName() + " to matching dealers.");
 
                     for (int i = 3; i < parts.length; i++) {
-                        AID dealer = new AID(parts[i], AID.ISLOCALNAME);
-                        
-                        // Charge the dealer a fee for making the connection!
+                        String buyerName = msg.getSender().getLocalName();
+                        String dealerName = parts[i];
+                        String sessionId = dealerName + "-" + buyerName;
+
+                        AID dealer = new AID(dealerName, AID.ISLOCALNAME);
+
+                        // Charge a fixed broker fee for connecting this buyer-dealer negotiation.
                         totalFees += FIXED_FEE;
+
+                        // Send structured analytics data to the GUI.
+                        // This updates the Treasury Dashboard in real time.
+                        AnalyticsStore.recordNegotiationStarted(
+                                sessionId,
+                                buyerName,
+                                dealerName,
+                                FIXED_FEE
+                        );
 
                         ACLMessage forward = new ACLMessage(ACLMessage.REQUEST);
                         forward.addReceiver(dealer);
                         forward.setConversationId("broker-lead");
-                        // Tell the dealer about the buyer and their offer
-                        forward.setContent(msg.getSender().getLocalName() + "," + targetMake + "," + targetModel + "," + initialOffer);
+
+                        // Tell the dealer about the buyer and their offer.
+                        forward.setContent(buyerName + "," + targetMake + "," + targetModel + "," + initialOffer);
+
                         myAgent.send(forward);
                     }
                 } catch (Exception e) {}
@@ -161,11 +178,38 @@ public class BrokerAgent extends Agent {
             );
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
-                double price = Double.parseDouble(msg.getContent());
+                String content = msg.getContent();
+
+                String sessionId = msg.getSender().getLocalName() + "-unknown";
+                double price;
+
+// New format: sessionId,finalPrice
+// Old fallback format: finalPrice
+                if (content.contains(",")) {
+                    String[] parts = content.split(",");
+                    sessionId = parts[0];
+                    price = Double.parseDouble(parts[1]);
+                } else {
+                    price = Double.parseDouble(content);
+                }
+
                 double commission = price * COMMISSION_RATE;
                 totalCommissions += commission;
-                AuctionLog.info("Broker (KA)", ">>> Collected RM" + commission + " commission from " + msg.getSender().getLocalName() + " <<<");
-                AuctionLog.info("Broker (KA)", "Treasury -> Total Fees: RM" + totalFees + " | Total Commissions: RM" + totalCommissions);
+
+// Send structured treasury update to the GUI.
+                AnalyticsStore.recordSuccessfulDeal(sessionId, price, commission);
+
+                AuctionLog.info(
+                        "Broker (KA)",
+                        ">>> Collected RM" + commission + " commission from "
+                                + msg.getSender().getLocalName() + " <<<"
+                );
+
+                AuctionLog.info(
+                        "Broker (KA)",
+                        "Treasury -> Total Fees: RM" + totalFees
+                                + " | Total Commissions: RM" + totalCommissions
+                );
             } else {
                 block();
             }
@@ -182,6 +226,25 @@ public class BrokerAgent extends Agent {
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
                 AuctionLog.info("Broker (KA)", msg.getSender().getLocalName() + " accepted lead for " + msg.getContent());
+            } else {
+                block();
+            }
+        }
+    }
+
+    private class ListenForDealerRemoval extends CyclicBehaviour {
+        @Override
+        public void action() {
+            MessageTemplate mt = MessageTemplate.and(
+                    MessageTemplate.MatchPerformative(ACLMessage.INFORM),
+                    MessageTemplate.MatchConversationId("dealer-remove")
+            );
+
+            ACLMessage msg = myAgent.receive(mt);
+
+            if (msg != null) {
+                dealerCatalogs.remove(msg.getSender());
+                AuctionLog.warn("Broker (KA)", "Removed dealer catalog for " + msg.getSender().getLocalName());
             } else {
                 block();
             }
