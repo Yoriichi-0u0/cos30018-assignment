@@ -8,9 +8,9 @@ The system simulates a broker-based car auction platform where dealer agents lis
 
 ## Team Members
 
-- Jonathan Zheng Li CHAI
-- Yuen Kai CHIA
-- Shan Kai LIU
+- Jonathan Zheng Li CHAI (Team Lead / Core Architecture)
+- Yuen Kai CHIA (Agent Communication / Protocols)
+- Shan Kai LIU (Negotiation Strategies / GUI)
 - Stanley Kai Jie LEONG
 - Edmund Dao Ann LIM
 
