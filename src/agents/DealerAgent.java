@@ -318,7 +318,7 @@ public class DealerAgent extends Agent {
             send(msg);
         }
 
-        AuctionLog.warn(getLocalName(), "Dealer agent is leaving the auction floor.");
+        AuctionLog.warn(getLocalName(), "Dealer agent is leaving the broker platform.");
 
         try {
             DFService.deregister(this);

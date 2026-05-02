@@ -21,7 +21,7 @@ import java.util.Map;
 
 public class AuctionPlatformController {
 
-    private static final String DEFAULT_BROKER_NAME = "auctionBroker";
+    private static final String DEFAULT_BROKER_NAME = "brokerExchange";
 
     private Runtime runtime;
     private AgentContainer mainContainer;
@@ -78,7 +78,7 @@ public class AuctionPlatformController {
         controller.start();
         activeAgents.put(agentName, controller);
         dealerListings.put(agentName, new DealerListing(agentName, car, minProfitMargin));
-        AuctionLog.info("System", "Dealer " + agentName + " [" + strategy + "] entered the auction hall with " + car + ".");
+        AuctionLog.info("System", "Dealer " + agentName + " [" + strategy + "] entered the broker platform with " + car + ".");
         return agentName;
     }
 
@@ -94,7 +94,7 @@ public class AuctionPlatformController {
         controller.start();
         activeAgents.put(agentName, controller);
         buyerProfiles.put(agentName, new BuyerProfile(agentName, make, model, initialOffer, maxPrice, maxRounds));
-        AuctionLog.info("System", "Buyer " + agentName + " joined the floor for " + make + " " + model + ".");
+        AuctionLog.info("System", "Buyer " + agentName + " joined the broker platform for " + make + " " + model + ".");
         return agentName;
     }
 
@@ -137,7 +137,7 @@ public class AuctionPlatformController {
         dealerListings.remove(cleanName);
         buyerProfiles.remove(cleanName);
 
-        AuctionLog.info("System", "Deleted agent " + cleanName + " from the auction floor.");
+        AuctionLog.info("System", "Deleted agent " + cleanName + " from the broker platform.");
         return true;
     }
 
@@ -221,7 +221,7 @@ public class AuctionPlatformController {
         controller.start();
         activeAgents.put(agentName, controller);
         brokerName = agentName;
-        AuctionLog.info("System", "Broker " + brokerName + " is now managing the auction floor.");
+        AuctionLog.info("System", "Broker " + brokerName + " is now managing the broker platform.");
     }
 
     private String uniqueName(String preferredName, String fallbackPrefix) {

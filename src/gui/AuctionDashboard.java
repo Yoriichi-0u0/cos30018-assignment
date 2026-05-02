@@ -5,11 +5,14 @@ import jade.core.ProfileImpl;
 import jade.wrapper.AgentController;
 import jade.wrapper.ContainerController;
 import jade.wrapper.StaleProxyException;
+import logging.AuctionLog;
+import models.Car;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultComboBoxModel;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -52,10 +55,15 @@ import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.text.NumberFormat;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -106,9 +114,90 @@ public class AuctionDashboard extends JFrame {
     private static final Color BUTTON_DARK = new Color(31, 39, 50);
     private static final Color BUTTON_BLUE = new Color(67, 83, 99);
     private static final Color BUTTON_RED = new Color(168, 40, 52);
+    private static final Color DISABLED_BG = new Color(70, 73, 80);
+    private static final Color DISABLED_TEXT = new Color(205, 201, 190);
+    private static final Color SELECTION_BG = new Color(74, 85, 103);
     private static final Color GREEN = new Color(88, 190, 132);
     private static final Color RED = new Color(230, 88, 92);
     private static final Color GRID_LINE = new Color(61, 68, 82);
+
+    private static final String APP_TITLE = "Velvet Auto Broker Exchange";
+    private static final String ALL_DEALS_OPTION = "All Deals";
+    private static final double BROKER_FIXED_FEE = 50.0;
+    private static final double BROKER_COMMISSION_RATE = 0.02;
+    private static final int DEMO_BATCH_SIZE = 5;
+    private static final int DEMO_MAX_APPEARANCES_PER_VEHICLE = 5;
+
+    private static final DemoVehiclePreset[] DEMO_VEHICLE_PRESETS = {
+            new DemoVehiclePreset("Vios", "Toyota", "Vios 1.5E AT", 2025, 93242.00),
+            new DemoVehiclePreset("Vios", "Toyota", "Vios 1.5G AT", 2025, 99242.00),
+            new DemoVehiclePreset("Vios", "Toyota", "Vios 1.5 HEV AT", 2025, 106542.00),
+            new DemoVehiclePreset("Vios", "Toyota", "Vios 1.5 HEV GR Sport AT", 2025, 112542.00),
+            new DemoVehiclePreset("City", "Honda", "City 1.5L S", 2025, 86668.00),
+            new DemoVehiclePreset("City", "Honda", "City 1.5L E", 2025, 91668.00),
+            new DemoVehiclePreset("City", "Honda", "City 1.5L V", 2025, 96668.00),
+            new DemoVehiclePreset("City", "Honda", "City 1.5L RS", 2025, 101668.00),
+            new DemoVehiclePreset("City", "Honda", "City 1.5L e:HEV RS", 2025, 113668.00),
+            new DemoVehiclePreset("Myvi", "Perodua", "Myvi 1.5 AV", 2025, 59900.00),
+            new DemoVehiclePreset("Ativa", "Perodua", "Ativa 1.0 AV", 2025, 72600.00),
+            new DemoVehiclePreset("S70", "Proton", "S70 1.5 Flagship", 2025, 94800.00),
+            new DemoVehiclePreset("X50", "Proton", "X50 1.5 Premium", 2025, 109800.00),
+            new DemoVehiclePreset("X70", "Proton", "X70 1.5 Premium", 2025, 128800.00),
+            new DemoVehiclePreset("CorollaCross", "Toyota", "Corolla Cross 1.8V", 2025, 139800.00),
+            new DemoVehiclePreset("HRV", "Honda", "HR-V 1.5L V", 2025, 134800.00),
+            new DemoVehiclePreset("Almera", "Nissan", "Almera 1.0 VL", 2025, 89800.00),
+            new DemoVehiclePreset("Mazda2", "Mazda", "2 Sedan High", 2025, 108000.00),
+            new DemoVehiclePreset("Ranger", "Ford", "Ranger XLT", 2025, 115000.00)
+    };
+
+    private static final String[] DEMO_DEALER_STRATEGIES = {
+            "Stubborn", "Desperate", "Matcher"
+    };
+
+    public static void installCrossPlatformLookAndFeel() {
+        try {
+            UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+        } catch (Exception ignored) {
+            /*
+             * Swing will keep the current look and feel if Metal cannot be installed.
+             */
+        }
+
+        UIManager.put("Panel.background", PANEL_BG);
+        UIManager.put("Button.background", BUTTON_DARK);
+        UIManager.put("Button.foreground", TEXT_MAIN);
+        UIManager.put("Button.disabledText", DISABLED_TEXT);
+        UIManager.put("Button.select", SELECTION_BG);
+        UIManager.put("Button.focus", ACCENT_DARK);
+        UIManager.put("ComboBox.background", INPUT_BG);
+        UIManager.put("ComboBox.foreground", TEXT_MAIN);
+        UIManager.put("ComboBox.disabledBackground", DISABLED_BG);
+        UIManager.put("ComboBox.disabledForeground", DISABLED_TEXT);
+        UIManager.put("ComboBox.selectionBackground", SELECTION_BG);
+        UIManager.put("ComboBox.selectionForeground", TEXT_MAIN);
+        UIManager.put("TextField.background", INPUT_BG);
+        UIManager.put("TextField.foreground", TEXT_MAIN);
+        UIManager.put("TextField.inactiveBackground", DISABLED_BG);
+        UIManager.put("TextField.inactiveForeground", DISABLED_TEXT);
+        UIManager.put("TextField.caretForeground", TEXT_MAIN);
+        UIManager.put("CheckBox.background", CARD_BG);
+        UIManager.put("CheckBox.foreground", TEXT_MAIN);
+        UIManager.put("CheckBox.disabledText", DISABLED_TEXT);
+        UIManager.put("Table.background", TABLE_BG);
+        UIManager.put("Table.foreground", TEXT_MAIN);
+        UIManager.put("Table.selectionBackground", SELECTION_BG);
+        UIManager.put("Table.selectionForeground", TEXT_MAIN);
+        UIManager.put("TableHeader.background", TABLE_HEADER_BG);
+        UIManager.put("TableHeader.foreground", TEXT_MAIN);
+        UIManager.put("TextPane.background", new Color(20, 22, 30));
+        UIManager.put("TextPane.foreground", TEXT_MAIN);
+        UIManager.put("TextArea.background", new Color(20, 22, 30));
+        UIManager.put("TextArea.foreground", TEXT_MAIN);
+        UIManager.put("ScrollPane.background", PANEL_BG);
+        UIManager.put("ScrollPane.border", BorderFactory.createLineBorder(new Color(57, 64, 78)));
+        UIManager.put("ScrollBar.thumb", BUTTON_BLUE);
+        UIManager.put("ScrollBar.track", INPUT_BG);
+    }
 
     private final Font bodyFont = new Font("SansSerif", Font.PLAIN, BASE_FONT_SIZE);
     private final Font bodyBoldFont = new Font("SansSerif", Font.BOLD, BASE_FONT_SIZE);
@@ -179,6 +268,17 @@ public class AuctionDashboard extends JFrame {
 
     private NegotiationGapChart negotiationGapChart;
     private TreasuryChart treasuryChart;
+    private JComboBox<String> dealViewComboBox;
+    private JLabel dealBuyerValue;
+    private JLabel dealDealerValue;
+    private JLabel dealVehicleValue;
+    private JLabel dealFinalPriceValue;
+    private JLabel dealRoundsValue;
+    private JLabel dealStrategyValue;
+    private JLabel dealStatusValue;
+    private JLabel dealFeeValue;
+    private JLabel dealCommissionValue;
+    private JLabel chartPointDetailLabel;
 
     private ContainerController mainContainer;
     private AgentController brokerController;
@@ -192,6 +292,15 @@ public class AuctionDashboard extends JFrame {
     private final java.util.List<BuyerRequest> buyerRequests = new ArrayList<>();
     private final java.util.List<Double> buyerOfferHistory = new ArrayList<>();
     private final java.util.List<Double> dealerAskHistory = new ArrayList<>();
+    private final java.util.List<DealRecord> dealRecords = new ArrayList<>();
+    private final Map<String, String> dealOptionSessionIds = new LinkedHashMap<>();
+    private final Map<String, Integer> demoDealerNameCounters = new HashMap<>();
+    private final Map<String, Integer> demoBuyerNameCounters = new HashMap<>();
+    private String selectedDealSessionId = ALL_DEALS_OPTION;
+    private int demoDealerPresetCursor = 0;
+    private int demoBuyerPresetCursor = 0;
+
+    private final AuctionLog.Listener liveFeedLogListener = event -> appendFeed(event.getSource(), event.getMessage());
 
     private int negotiations = 0;
     private int successfulDeals = 0;
@@ -201,18 +310,21 @@ public class AuctionDashboard extends JFrame {
     private double latestGap = 0.0;
 
     public AuctionDashboard() {
-        super("Velvet Hammer Auto Auction");
+        super(APP_TITLE);
 
         numberFormat.setMinimumFractionDigits(2);
         numberFormat.setMaximumFractionDigits(2);
 
+        installCrossPlatformLookAndFeel();
         installLookAndFeelTweaks();
         buildUi();
         wireActions();
+        AuctionLog.addListener(liveFeedLogListener);
 
-        appendFeed("Dashboard", "Auction dashboard is ready. Start the floor or launch the demo lineup.");
+        appendFeed("Dashboard", "Negotiation dashboard is ready. Start the broker platform or launch the demo lineup.");
         updateDashboardStats();
         updateDeleteAgentComboBox();
+        updateDealSelectionComboBox();
 
         addComponentListener(new ComponentAdapter() {
             @Override
@@ -221,20 +333,19 @@ public class AuctionDashboard extends JFrame {
             }
         });
 
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                AuctionLog.removeListener(liveFeedLogListener);
+            }
+        });
+
         SwingUtilities.invokeLater(this::refreshResponsiveLayout);
     }
 
     private void installLookAndFeelTweaks() {
         try {
-            UIManager.put("ComboBox.background", INPUT_BG);
-            UIManager.put("ComboBox.foreground", TEXT_MAIN);
-            UIManager.put("ComboBox.selectionBackground", BUTTON_DARK);
-            UIManager.put("ComboBox.selectionForeground", TEXT_MAIN);
-            UIManager.put("TextField.background", INPUT_BG);
-            UIManager.put("TextField.foreground", TEXT_MAIN);
-            UIManager.put("TextField.caretForeground", TEXT_MAIN);
-            UIManager.put("CheckBox.background", CARD_BG);
-            UIManager.put("CheckBox.foreground", TEXT_MAIN);
+            installCrossPlatformLookAndFeel();
         } catch (Exception ignored) {
             /*
              * Safe to ignore look and feel tweaks.
@@ -281,8 +392,8 @@ public class AuctionDashboard extends JFrame {
         mainPanel.add(contentPanel);
 
         JScrollPane pageScrollPane = new JScrollPane(mainPanel);
+        styleScrollPane(pageScrollPane, APP_BG);
         pageScrollPane.setBorder(BorderFactory.createEmptyBorder());
-        pageScrollPane.getViewport().setBackground(APP_BG);
         pageScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         pageScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         pageScrollPane.getVerticalScrollBar().setUnitIncrement(22);
@@ -307,14 +418,14 @@ public class AuctionDashboard extends JFrame {
         textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
 
         JLabel courseLabel = createLabel("COS30018 Intelligent Systems", ACCENT, bodyBoldFont);
-        JLabel titleLabel = createLabel("Velvet Hammer Auto Auction", TEXT_MAIN, titleFont);
+        JLabel titleLabel = createLabel(APP_TITLE, TEXT_MAIN, titleFont);
         JLabel subtitleLabel = createLabel(
-                "A JADE-based broker platform for automated car negotiation between dealer and buyer agents.",
+                "A JADE-based broker platform for automated vehicle negotiation between dealer and buyer agents.",
                 TEXT_MUTED,
                 bodyFont
         );
         JLabel demoLabel = createLabel(
-                "Demo: start the auction floor, add dealers and buyers, then observe matching, negotiation, and analytics.",
+                "Demo: start the broker platform, add dealers and buyers, then observe matching, negotiation, and analytics.",
                 TEXT_MAIN,
                 bodyBoldFont
         );
@@ -329,7 +440,7 @@ public class AuctionDashboard extends JFrame {
 
         JPanel metaPanel = new JPanel(new GridLayout(1, 3, 10, 0));
         metaPanel.setOpaque(false);
-        metaPanel.add(createInfoBox("Theme", "Prestige car auction"));
+        metaPanel.add(createInfoBox("Theme", "Brokered vehicle negotiation"));
         metaPanel.add(createInfoBox("Agents", "Broker + dealers + buyers"));
         metaPanel.add(createInfoBox("Stack", "JADE 4.6 + Swing"));
 
@@ -352,8 +463,8 @@ public class AuctionDashboard extends JFrame {
         platformStatusValue = createMetricValueLabel("OFF");
 
         panel.add(createSummaryCard("Broker", brokerCountValue, "Central facilitator"));
-        panel.add(createSummaryCard("Dealers", dealerCountValue, "Vehicles on the floor"));
-        panel.add(createSummaryCard("Buyers", buyerCountValue, "Automated bidders"));
+        panel.add(createSummaryCard("Dealers", dealerCountValue, "Vehicle listings"));
+        panel.add(createSummaryCard("Buyers", buyerCountValue, "Buyer requests"));
         panel.add(createSummaryCard("Platform", platformStatusValue, "Container status"));
 
         return panel;
@@ -379,8 +490,12 @@ public class AuctionDashboard extends JFrame {
         JButton button = new JButton(title);
         button.setFont(bodyBoldFont);
         button.setFocusPainted(false);
+        button.setFocusable(false);
         button.setBorder(BorderFactory.createEmptyBorder());
         button.setOpaque(true);
+        button.setContentAreaFilled(true);
+        button.setBorderPainted(false);
+        button.setRolloverEnabled(false);
         button.setBackground(BUTTON_DARK);
         button.setForeground(TEXT_MAIN);
         button.addActionListener(e -> showTab(title));
@@ -405,9 +520,9 @@ public class AuctionDashboard extends JFrame {
         workflow.setOpaque(false);
 
         String[][] steps = {
-                {"1. Start Auction Floor", "Starts the embedded JADE main container and creates the Broker Agent."},
+                {"1. Start Broker Platform", "Starts the embedded JADE main container and creates the Broker Agent."},
                 {"2. Add Dealer Agents", "Dealers list cars with make, model, year, asking price, profit margin, and negotiation strategy."},
-                {"3. Add Buyer Agents", "Buyers submit target car requirements, opening bid, maximum budget, and round limit."},
+                {"3. Add Buyer Agents", "Buyers submit target vehicle requirements, opening offer, maximum budget, and round limit."},
                 {"4. Broker Matching", "The Broker Agent matches buyer requests against dealer vehicle listings."},
                 {"5. Negotiation", "Buyer and Dealer Agents negotiate through JADE ACL messages using automated or manual mode."},
                 {"6. Visual Analytics", "The analytics page shows buyer offer vs dealer ask, broker revenue, deal volume, and success rate."}
@@ -455,7 +570,7 @@ public class AuctionDashboard extends JFrame {
         panel.setMinimumSize(new Dimension(MIN_PAGE_WIDTH, CONTENT_AREA_HEIGHT));
         panel.setPreferredSize(new Dimension(MIN_PAGE_WIDTH, CONTENT_AREA_HEIGHT));
 
-        JPanel auctionControl = buildAuctionControlPanel();
+        JPanel auctionControl = buildBrokerPlatformControlPanel();
         JPanel agentManagement = buildAgentManagementPanel();
         JPanel dealerForm = buildDealerListingPanel();
         JPanel buyerForm = buildBuyerBiddingPanel();
@@ -486,7 +601,7 @@ public class AuctionDashboard extends JFrame {
         return panel;
     }
 
-    private JPanel buildAuctionControlPanel() {
+    private JPanel buildBrokerPlatformControlPanel() {
         RoundPanel panel = createRoundPanel(new BorderLayout(), PANEL_BG, ACCENT_DARK, 10);
         panel.setBorder(new EmptyBorder(16, 16, 16, 16));
 
@@ -495,11 +610,11 @@ public class AuctionDashboard extends JFrame {
         panel.setMinimumSize(new Dimension(10, 175));
 
         JPanel header = createCardHeader(
-                "Auction Control",
+                "Broker Platform Control",
                 "Start the JADE container, launch demo agents, or reset the platform."
         );
 
-        startFloorButton = createButton("Start Auction Floor", ACCENT, Color.BLACK, BUTTON_HEIGHT);
+        startFloorButton = createButton("Start Broker Platform", ACCENT, Color.BLACK, BUTTON_HEIGHT);
         runDemoButton = createButton("Run Demo Lineup", BUTTON_RED, Color.WHITE, BUTTON_HEIGHT);
         resetButton = createButton("Reset Platform", BUTTON_BLUE, Color.WHITE, BUTTON_HEIGHT);
 
@@ -642,9 +757,13 @@ public class AuctionDashboard extends JFrame {
         buyerMaxRoundsField = createTextField("5");
 
         manualNegotiationCheckBox = new JCheckBox("Enable Manual Negotiation UI");
-        manualNegotiationCheckBox.setOpaque(false);
+        manualNegotiationCheckBox.setOpaque(true);
+        manualNegotiationCheckBox.setBackground(CARD_BG);
         manualNegotiationCheckBox.setForeground(TEXT_MAIN);
         manualNegotiationCheckBox.setFont(bodyFont);
+        manualNegotiationCheckBox.setFocusPainted(false);
+        manualNegotiationCheckBox.setFocusable(false);
+        manualNegotiationCheckBox.setBorder(new EmptyBorder(3, 2, 3, 2));
         manualNegotiationCheckBox.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         startBuyerButton = createButton("Start Buyer Agent", BUTTON_RED, Color.WHITE, LARGE_BUTTON_HEIGHT);
@@ -678,13 +797,13 @@ public class AuctionDashboard extends JFrame {
         panel.setMinimumSize(new Dimension(MIN_PAGE_WIDTH, CONTENT_AREA_HEIGHT));
         panel.setPreferredSize(new Dimension(MIN_PAGE_WIDTH, CONTENT_AREA_HEIGHT));
 
-        dealerTableModel = createReadOnlyTableModel(new String[] {"Dealer", "Vehicle", "Year", "Ask", "Floor"});
+        dealerTableModel = createReadOnlyTableModel(new String[] {"Dealer", "Vehicle", "Year", "Ask", "Min Price"});
         buyerTableModel = createReadOnlyTableModel(new String[] {"Buyer", "Target", "Opening", "Ceiling", "Rounds"});
 
         JTable dealerTable = createStyledTable(dealerTableModel);
         JTable buyerTable = createStyledTable(buyerTableModel);
 
-        panel.add(createTableCard("Showroom Board", "Live dealer inventory available on the broker floor.", dealerTable));
+        panel.add(createTableCard("Dealer Listings", "Live dealer inventory available on the broker platform.", dealerTable));
         panel.add(createTableCard("Buyer Board", "Buyer agents currently scouting and negotiating.", buyerTable));
 
         return panel;
@@ -698,7 +817,7 @@ public class AuctionDashboard extends JFrame {
 
         JPanel header = createCardHeader(
                 "Visual Analytics",
-                "Real-time negotiation graph and Broker Treasury Dashboard."
+                "Real-time negotiation analytics and broker treasury dashboard."
         );
 
         negotiationsValue = createMetricValueLabel("0");
@@ -725,16 +844,24 @@ public class AuctionDashboard extends JFrame {
 
         negotiationGapChart = new NegotiationGapChart();
         treasuryChart = new TreasuryChart();
+        chartPointDetailLabel = createLabel("Hover near a point to inspect a negotiation round.", TEXT_MUTED, bodyFont);
 
         JPanel chartsGrid = new JPanel(new GridLayout(1, 2, 12, 0));
         chartsGrid.setOpaque(false);
-        chartsGrid.add(createChartCard("Negotiation Gap Chart", negotiationGapChart));
+        chartsGrid.add(createNegotiationChartCard());
         chartsGrid.add(createChartCard("Broker Treasury Chart", treasuryChart));
 
         JPanel center = new JPanel(new BorderLayout(0, 12));
         center.setOpaque(false);
         center.add(metricsGrid, BorderLayout.NORTH);
-        center.add(chartsGrid, BorderLayout.CENTER);
+
+        JPanel analyticsBody = new JPanel(new BorderLayout(0, 12));
+        analyticsBody.setOpaque(false);
+        analyticsBody.add(createDealSelectionPanel(), BorderLayout.NORTH);
+        analyticsBody.add(chartsGrid, BorderLayout.CENTER);
+        analyticsBody.add(createDealDetailsPanel(), BorderLayout.SOUTH);
+
+        center.add(analyticsBody, BorderLayout.CENTER);
 
         panel.add(header, BorderLayout.NORTH);
         panel.add(center, BorderLayout.CENTER);
@@ -749,7 +876,7 @@ public class AuctionDashboard extends JFrame {
         panel.setPreferredSize(new Dimension(MIN_PAGE_WIDTH, CONTENT_AREA_HEIGHT));
 
         JPanel header = createCardHeader(
-                "Live Auction Feed",
+                "Live Negotiation Feed",
                 "Real-time broker updates, buyer requests, dealer decisions, negotiation rounds, and confirmed deals."
         );
 
@@ -759,10 +886,11 @@ public class AuctionDashboard extends JFrame {
         feedPane.setForeground(TEXT_MAIN);
         feedPane.setFont(monoFont);
         feedPane.setBorder(new EmptyBorder(12, 12, 12, 12));
+        feedPane.setOpaque(true);
+        feedPane.setCaretColor(TEXT_MAIN);
 
         JScrollPane feedScrollPane = new JScrollPane(feedPane);
-        feedScrollPane.setBorder(BorderFactory.createLineBorder(new Color(45, 50, 62)));
-        feedScrollPane.getViewport().setBackground(new Color(20, 22, 30));
+        styleScrollPane(feedScrollPane, new Color(20, 22, 30));
         feedScrollPane.getVerticalScrollBar().setUnitIncrement(20);
 
         panel.add(header, BorderLayout.NORTH);
@@ -840,7 +968,7 @@ public class AuctionDashboard extends JFrame {
 
     private void startAuctionFloor() {
         if (platformLive) {
-            appendFeed("System", "Auction floor is already live.");
+            appendFeed("System", "Broker platform is already live.");
             return;
         }
 
@@ -879,43 +1007,111 @@ public class AuctionDashboard extends JFrame {
     private void runDemoLineup() {
         startAuctionFloor();
 
-        DealerListing[] dealers = {
-                new DealerListing("ViosDealer01", "Toyota", "Vios 1.5G AT", 2025, 99242.00, 0.08, "Stubborn"),
-                new DealerListing("ViosDealer02", "Toyota", "Vios 1.5E AT", 2025, 93242.00, 0.10, "Desperate"),
-                new DealerListing("ViosDealer03", "Toyota", "Vios 1.5 HEV AT", 2025, 106542.00, 0.07, "Matcher"),
+        int dealersAdded = addNextDemoDealers(DEMO_BATCH_SIZE);
+        int buyersAdded = addNextDemoBuyers(DEMO_BATCH_SIZE);
 
-                new DealerListing("CityDealer01", "Honda", "City 1.5L S", 2025, 86668.00, 0.08, "Stubborn"),
-                new DealerListing("CityDealer02", "Honda", "City 1.5L E", 2025, 91668.00, 0.10, "Desperate"),
-                new DealerListing("CityDealer03", "Honda", "City 1.5L V", 2025, 96668.00, 0.07, "Matcher")
-        };
-
-        BuyerRequest[] buyers = {
-                new BuyerRequest("ViosBuyer01", "Toyota", "Vios 1.5G AT", 91000.00, 100500.00, 5, false),
-                new BuyerRequest("ViosBuyer02", "Toyota", "Vios 1.5E AT", 85000.00, 95000.00, 5, false),
-                new BuyerRequest("ViosBuyer03", "Toyota", "Vios 1.5 HEV AT", 99000.00, 108000.00, 5, false),
-
-                new BuyerRequest("CityBuyer01", "Honda", "City 1.5L S", 80000.00, 87500.00, 5, false),
-                new BuyerRequest("CityBuyer02", "Honda", "City 1.5L E", 86000.00, 92500.00, 5, false),
-                new BuyerRequest("CityBuyer03", "Honda", "City 1.5L V", 90000.00, 98000.00, 5, false)
-        };
-
-        for (DealerListing dealer : dealers) {
-            if (!agentTypes.containsKey(dealer.agentName)) {
-                addDealerListing(dealer, true);
-            }
+        if (dealersAdded == 0 && buyersAdded == 0) {
+            appendFeed("System", "No more demo lineup presets available.");
+        } else {
+            appendFeed(
+                    "System",
+                    "Demo lineup loaded: added " + dealersAdded + " dealer agent(s) and "
+                            + buyersAdded + " buyer agent(s). Open Live Negotiation Feed to observe messages."
+            );
         }
 
-        for (BuyerRequest buyer : buyers) {
-            if (!agentTypes.containsKey(buyer.agentName)) {
-                addBuyerRequest(buyer, true);
-                performLocalNegotiation(buyer);
-            }
-        }
-
-        appendFeed("System", "Demo lineup loaded with Toyota Vios and Honda City dealer and buyer agents.");
         updateDashboardStats();
         updateDeleteAgentComboBox();
-        showTab(TAB_LIVE_FEED);
+        showTab(TAB_SETUP);
+    }
+
+    private int addNextDemoDealers(int maxToAdd) {
+        int added = 0;
+        int visited = 0;
+
+        while (added < maxToAdd && visited < DEMO_VEHICLE_PRESETS.length) {
+            int presetIndex = demoDealerPresetCursor;
+            DemoVehiclePreset preset = DEMO_VEHICLE_PRESETS[presetIndex];
+            demoDealerPresetCursor = (demoDealerPresetCursor + 1) % DEMO_VEHICLE_PRESETS.length;
+            visited++;
+
+            int existingForVehicle = countDealerAppearances(preset);
+            if (existingForVehicle >= DEMO_MAX_APPEARANCES_PER_VEHICLE) {
+                continue;
+            }
+
+            String dealerName = nextDemoName(demoDealerNameCounters, preset.namePrefix, "Dealer");
+            String strategy = DEMO_DEALER_STRATEGIES[(presetIndex + existingForVehicle) % DEMO_DEALER_STRATEGIES.length];
+            double askPrice = preset.price * (1.0 + (existingForVehicle * 0.006));
+            double minMargin = demoDealerMargin(existingForVehicle);
+
+            DealerListing dealer = new DealerListing(
+                    dealerName,
+                    preset.make,
+                    preset.model,
+                    preset.year,
+                    askPrice,
+                    minMargin,
+                    strategy
+            );
+
+            addDealerListing(dealer, true);
+            appendFeed(
+                    dealerName,
+                    "Demo dealer preset " + (existingForVehicle + 1) + "/"
+                            + DEMO_MAX_APPEARANCES_PER_VEHICLE + " listed for " + dealer.vehicleName() + "."
+            );
+            added++;
+        }
+
+        return added;
+    }
+
+    private int addNextDemoBuyers(int maxToAdd) {
+        int added = 0;
+        int visited = 0;
+
+        while (added < maxToAdd && visited < DEMO_VEHICLE_PRESETS.length) {
+            DemoVehiclePreset preset = DEMO_VEHICLE_PRESETS[demoBuyerPresetCursor];
+            demoBuyerPresetCursor = (demoBuyerPresetCursor + 1) % DEMO_VEHICLE_PRESETS.length;
+            visited++;
+
+            int existingForVehicle = countBuyerAppearances(preset);
+            if (existingForVehicle >= DEMO_MAX_APPEARANCES_PER_VEHICLE) {
+                continue;
+            }
+
+            boolean likelySuccess = existingForVehicle % 2 == 0;
+            String buyerName = nextDemoName(demoBuyerNameCounters, preset.namePrefix, "Buyer");
+            double openingOffer = likelySuccess
+                    ? preset.price * (0.90 + (Math.min(existingForVehicle, 2) * 0.01))
+                    : preset.price * 0.78;
+            double maxBudget = likelySuccess
+                    ? preset.price * 1.01
+                    : preset.price * 0.89;
+            int maxRounds = likelySuccess ? 5 : 4;
+
+            BuyerRequest buyer = new BuyerRequest(
+                    buyerName,
+                    preset.make,
+                    preset.model,
+                    openingOffer,
+                    maxBudget,
+                    maxRounds,
+                    false
+            );
+
+            addBuyerRequest(buyer, true);
+            appendFeed(
+                    buyerName,
+                    "Demo buyer preset " + (existingForVehicle + 1) + "/"
+                            + DEMO_MAX_APPEARANCES_PER_VEHICLE + " requested " + buyer.targetName() + "."
+            );
+            performLocalNegotiation(buyer);
+            added++;
+        }
+
+        return added;
     }
 
     private void resetPlatform() {
@@ -964,6 +1160,12 @@ public class AuctionDashboard extends JFrame {
         buyerRequests.clear();
         buyerOfferHistory.clear();
         dealerAskHistory.clear();
+        dealRecords.clear();
+        selectedDealSessionId = ALL_DEALS_OPTION;
+        demoDealerNameCounters.clear();
+        demoBuyerNameCounters.clear();
+        demoDealerPresetCursor = 0;
+        demoBuyerPresetCursor = 0;
 
         negotiations = 0;
         successfulDeals = 0;
@@ -977,10 +1179,12 @@ public class AuctionDashboard extends JFrame {
 
         feedPane.setText("");
 
-        appendFeed("Dashboard", "Auction dashboard is ready. Start the floor or launch the demo lineup.");
+        appendFeed("Dashboard", "Negotiation dashboard is ready. Start the broker platform or launch the demo lineup.");
 
         updateDashboardStats();
         updateDeleteAgentComboBox();
+        updateDealSelectionComboBox();
+        updateDealDetailCard(null);
         repaintCharts();
     }
 
@@ -1006,7 +1210,7 @@ public class AuctionDashboard extends JFrame {
             addDealerListing(dealer, true);
 
             appendFeed(agentName, "Listed " + dealer.vehicleName() + " at " + formatRM(dealer.askPrice)
-                    + " with floor " + formatRM(dealer.floorPrice()) + " using " + strategy + " strategy.");
+                    + " with minimum price " + formatRM(dealer.floorPrice()) + " using " + strategy + " strategy.");
 
             updateDashboardStats();
             updateDeleteAgentComboBox();
@@ -1045,7 +1249,8 @@ public class AuctionDashboard extends JFrame {
                     + formatRM(openingBid) + " and budget " + formatRM(maxBudget) + ".");
 
             if (manualMode) {
-                appendFeed(agentName, "Manual Negotiation UI enabled. The buyer is created, but auto negotiation is paused.");
+                appendFeed(agentName, "Manual Negotiation UI enabled. Opening an assisted negotiation view.");
+                performManualNegotiation(buyer);
             } else {
                 performLocalNegotiation(buyer);
             }
@@ -1054,7 +1259,7 @@ public class AuctionDashboard extends JFrame {
             updateDeleteAgentComboBox();
 
             if (manualMode) {
-                showTab(TAB_LIVE_FEED);
+                showTab(TAB_SETUP);
             } else {
                 showTab(TAB_ANALYTICS);
             }
@@ -1069,15 +1274,14 @@ public class AuctionDashboard extends JFrame {
 
         AgentController controller = null;
         if (createAgent && platformLive && mainContainer != null) {
+            ArrayList<Car> inventory = new ArrayList<>();
+            inventory.add(new Car(dealer.make, dealer.model, dealer.year, dealer.askPrice));
+
             controller = createAgentSafely(
                     dealer.agentName,
                     DEALER_AGENT_CLASS,
                     new Object[] {
-                            this,
-                            dealer.make,
-                            dealer.model,
-                            dealer.year,
-                            dealer.askPrice,
+                            inventory,
                             dealer.minMargin,
                             dealer.strategy
                     }
@@ -1108,7 +1312,6 @@ public class AuctionDashboard extends JFrame {
                     buyer.agentName,
                     BUYER_AGENT_CLASS,
                     new Object[] {
-                            this,
                             buyer.make,
                             buyer.model,
                             buyer.openingBid,
@@ -1228,14 +1431,28 @@ public class AuctionDashboard extends JFrame {
         if (matches.isEmpty()) {
             failedDeals++;
             appendFeed(buyer.agentName, "Broker matched 0 dealers. Waiting for future dealer listings.");
+            addDealRecord(new DealRecord(
+                    "no-match-" + buyer.agentName + "-" + System.currentTimeMillis(),
+                    buyer.agentName,
+                    "No matching dealer",
+                    buyer.targetName(),
+                    0.0,
+                    new ArrayList<>(),
+                    "N/A",
+                    "No matching dealer",
+                    0.0,
+                    0.0
+            ));
             updateDashboardStats();
             repaintCharts();
             return;
         }
 
-        fixedFees += 50.0;
+        fixedFees += BROKER_FIXED_FEE;
 
         DealerListing bestDealer = matches.get(0);
+        String sessionId = bestDealer.agentName + "-" + buyer.agentName + "-" + System.currentTimeMillis();
+        java.util.List<DealRound> rounds = new ArrayList<>();
         boolean success = false;
         double finalPrice = 0.0;
         double finalBuyerOffer = buyer.openingBid;
@@ -1252,6 +1469,7 @@ public class AuctionDashboard extends JFrame {
 
             buyerOfferHistory.add(buyerOffer);
             dealerAskHistory.add(dealerAsk);
+            rounds.add(new DealRound(round, buyerOffer, dealerAsk));
 
             appendFeed(
                     buyer.agentName,
@@ -1268,8 +1486,20 @@ public class AuctionDashboard extends JFrame {
 
         if (success) {
             successfulDeals++;
-            double commission = finalPrice * 0.02;
+            double commission = finalPrice * BROKER_COMMISSION_RATE;
             commissions += commission;
+            addDealRecord(new DealRecord(
+                    sessionId,
+                    buyer.agentName,
+                    bestDealer.agentName,
+                    bestDealer.vehicleName(),
+                    finalPrice,
+                    rounds,
+                    bestDealer.strategy,
+                    "Closed",
+                    BROKER_FIXED_FEE,
+                    commission
+            ));
 
             appendFeed(
                     bestDealer.agentName,
@@ -1282,11 +1512,208 @@ public class AuctionDashboard extends JFrame {
             );
         } else {
             failedDeals++;
+            addDealRecord(new DealRecord(
+                    sessionId,
+                    buyer.agentName,
+                    bestDealer.agentName,
+                    bestDealer.vehicleName(),
+                    0.0,
+                    rounds,
+                    bestDealer.strategy,
+                    "Failed",
+                    BROKER_FIXED_FEE,
+                    0.0
+            ));
             appendFeed(
                     "Broker",
                     "No deal between " + buyer.agentName + " and " + bestDealer.agentName
                             + ". Latest gap was " + formatRM(finalDealerAsk - finalBuyerOffer) + "."
             );
+        }
+
+        updateDashboardStats();
+        repaintCharts();
+    }
+
+    private void performManualNegotiation(BuyerRequest buyer) {
+        java.util.List<DealerListing> matches = findMatchingDealers(buyer);
+
+        negotiations++;
+
+        appendFeed("Broker", "Manual request for " + buyer.targetName() + " from " + buyer.agentName + ".");
+        appendFeed("Broker", "Matched " + matches.size() + " dealer(s) for manual negotiation with " + buyer.agentName + ".");
+
+        if (matches.isEmpty()) {
+            failedDeals++;
+            appendFeed(
+                    buyer.agentName,
+                    "No matching dealer was found. Add a dealer listing for " + buyer.targetName() + " and try again."
+            );
+            ManualNegotiationUI.showNoMatchDialog(
+                    this,
+                    buyer.agentName,
+                    buyer.targetName(),
+                    "No dealer listing currently matches this buyer request."
+            );
+            addDealRecord(new DealRecord(
+                    "manual-no-match-" + buyer.agentName + "-" + System.currentTimeMillis(),
+                    buyer.agentName,
+                    "No matching dealer",
+                    buyer.targetName(),
+                    0.0,
+                    new ArrayList<>(),
+                    "N/A",
+                    "No matching dealer",
+                    0.0,
+                    0.0
+            ));
+            updateDashboardStats();
+            repaintCharts();
+            return;
+        }
+
+        fixedFees += BROKER_FIXED_FEE;
+
+        DealerListing dealer = matches.get(0);
+        String sessionId = dealer.agentName + "-" + buyer.agentName + "-manual-" + System.currentTimeMillis();
+        java.util.List<DealRound> rounds = new ArrayList<>();
+        StringBuilder manualLog = new StringBuilder();
+
+        double buyerOffer = buyer.openingBid;
+        double dealerAsk = dealer.askPrice;
+        boolean success = false;
+        String status = "Rejected";
+        double finalPrice = 0.0;
+        int round = 0;
+
+        while (round <= buyer.maxRounds) {
+            latestGap = Math.max(0.0, dealerAsk - buyerOffer);
+            buyerOfferHistory.add(buyerOffer);
+            dealerAskHistory.add(dealerAsk);
+            rounds.add(new DealRound(round, buyerOffer, dealerAsk));
+
+            String roundLine = "Round " + round + ": buyer offer " + formatRM(buyerOffer)
+                    + ", dealer ask " + formatRM(dealerAsk) + ".";
+            manualLog.append(roundLine).append('\n');
+            appendFeed(buyer.agentName, roundLine);
+
+            ManualNegotiationUI.Decision decision = ManualNegotiationUI.showNegotiationDialog(
+                    this,
+                    buyer.agentName,
+                    dealer.agentName,
+                    dealer.vehicleName(),
+                    buyerOffer,
+                    dealerAsk,
+                    round,
+                    buyer.maxBudget,
+                    manualLog.toString()
+            );
+
+            if (decision.isAccepted()) {
+                if (dealerAsk > buyer.maxBudget) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "The dealer ask is above this buyer's max budget.",
+                            "Manual Negotiation",
+                            JOptionPane.WARNING_MESSAGE
+                    );
+                    manualLog.append("Accept blocked: dealer ask exceeds buyer budget.\n");
+                    continue;
+                }
+
+                success = true;
+                status = "Closed";
+                finalPrice = dealerAsk;
+                break;
+            }
+
+            if (decision.isRejected()) {
+                status = "Rejected";
+                appendFeed(buyer.agentName, "Manual negotiation rejected for " + dealer.agentName + ".");
+                break;
+            }
+
+            if (decision.isClosed()) {
+                status = "Closed UI";
+                appendFeed(buyer.agentName, "Manual negotiation UI closed without a deal.");
+                break;
+            }
+
+            double counterOffer = decision.getCounterOffer();
+            if (counterOffer > buyer.maxBudget) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Counter offer cannot exceed the buyer max budget of " + formatRM(buyer.maxBudget) + ".",
+                        "Manual Negotiation",
+                        JOptionPane.WARNING_MESSAGE
+                );
+                manualLog.append("Counter rejected: offer exceeded buyer budget.\n");
+                continue;
+            }
+
+            buyerOffer = Math.max(buyerOffer, counterOffer);
+            appendFeed(buyer.agentName, "Manual counter offer " + formatRM(buyerOffer) + " to " + dealer.agentName + ".");
+            manualLog.append("Buyer countered at ").append(formatRM(buyerOffer)).append(".\n");
+
+            if (buyerOffer >= dealerAsk) {
+                success = true;
+                status = "Closed";
+                finalPrice = dealerAsk;
+                break;
+            }
+
+            round++;
+
+            if (round > buyer.maxRounds) {
+                status = "Failed";
+                break;
+            }
+
+            double progress = buyer.maxRounds == 0 ? 1.0 : (double) round / buyer.maxRounds;
+            dealerAsk = calculateDealerAsk(dealer, progress);
+            appendFeed(dealer.agentName, "Manual flow counter ask " + formatRM(dealerAsk) + " for round " + round + ".");
+            manualLog.append("Dealer countered at ").append(formatRM(dealerAsk)).append(".\n");
+        }
+
+        if (success) {
+            successfulDeals++;
+            double commission = finalPrice * BROKER_COMMISSION_RATE;
+            commissions += commission;
+            appendFeed(
+                    "Broker",
+                    "Manual deal closed between " + buyer.agentName + " and " + dealer.agentName
+                            + " for " + formatRM(finalPrice) + "."
+            );
+            addDealRecord(new DealRecord(
+                    sessionId,
+                    buyer.agentName,
+                    dealer.agentName,
+                    dealer.vehicleName(),
+                    finalPrice,
+                    rounds,
+                    dealer.strategy,
+                    status,
+                    BROKER_FIXED_FEE,
+                    commission
+            ));
+        } else {
+            failedDeals++;
+            appendFeed(
+                    "Broker",
+                    "Manual negotiation ended without a deal between " + buyer.agentName + " and " + dealer.agentName + "."
+            );
+            addDealRecord(new DealRecord(
+                    sessionId,
+                    buyer.agentName,
+                    dealer.agentName,
+                    dealer.vehicleName(),
+                    0.0,
+                    rounds,
+                    dealer.strategy,
+                    status,
+                    BROKER_FIXED_FEE,
+                    0.0
+            ));
         }
 
         updateDashboardStats();
@@ -1306,6 +1733,31 @@ public class AuctionDashboard extends JFrame {
         }
 
         return matches;
+    }
+
+    private int countDealerAppearances(DemoVehiclePreset preset) {
+        int count = 0;
+        for (DealerListing dealer : dealerListings) {
+            if (preset.matchesDealer(dealer)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int countBuyerAppearances(DemoVehiclePreset preset) {
+        int count = 0;
+        for (BuyerRequest buyer : buyerRequests) {
+            if (preset.matchesBuyer(buyer)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private double demoDealerMargin(int existingForVehicle) {
+        double[] margins = {0.08, 0.10, 0.07, 0.11, 0.09};
+        return margins[Math.min(existingForVehicle, margins.length - 1)];
     }
 
     private double calculateDealerAsk(DealerListing dealer, double progress) {
@@ -1345,6 +1797,7 @@ public class AuctionDashboard extends JFrame {
             latestGapValue.setText(formatRM(latestGap));
         }
 
+        updateDealDetailCard(getSelectedDealRecord());
         repaintCharts();
     }
 
@@ -1364,6 +1817,8 @@ public class AuctionDashboard extends JFrame {
         deleteAgentComboBox.setModel(model);
         deleteAgentComboBox.setEnabled(hasAgents);
         deleteAgentButton.setEnabled(hasAgents);
+        styleComboBoxState(deleteAgentComboBox, hasAgents);
+        styleButtonState(deleteAgentButton, hasAgents, BUTTON_RED, Color.WHITE);
     }
 
     private void repaintCharts() {
@@ -1374,6 +1829,127 @@ public class AuctionDashboard extends JFrame {
         if (treasuryChart != null) {
             treasuryChart.repaint();
         }
+    }
+
+    private void addDealRecord(DealRecord record) {
+        dealRecords.add(record);
+        updateDealSelectionComboBox();
+
+        if (ALL_DEALS_OPTION.equals(selectedDealSessionId)) {
+            updateDealDetailCard(null);
+        }
+    }
+
+    private void updateDealSelectionComboBox() {
+        if (dealViewComboBox == null) {
+            return;
+        }
+
+        Object currentSelection = dealViewComboBox.getSelectedItem();
+        String currentOption = currentSelection == null ? ALL_DEALS_OPTION : currentSelection.toString();
+
+        DefaultComboBoxModel<String> model = new DefaultComboBoxModel<>();
+        dealOptionSessionIds.clear();
+        model.addElement(ALL_DEALS_OPTION);
+        dealOptionSessionIds.put(ALL_DEALS_OPTION, ALL_DEALS_OPTION);
+
+        for (DealRecord record : dealRecords) {
+            if (record.isCompleted()) {
+                String label = record.optionLabel();
+                model.addElement(label);
+                dealOptionSessionIds.put(label, record.sessionId);
+            }
+        }
+
+        dealViewComboBox.setModel(model);
+
+        if (dealOptionSessionIds.containsKey(currentOption)) {
+            dealViewComboBox.setSelectedItem(currentOption);
+            selectedDealSessionId = dealOptionSessionIds.get(currentOption);
+        } else {
+            dealViewComboBox.setSelectedItem(ALL_DEALS_OPTION);
+            selectedDealSessionId = ALL_DEALS_OPTION;
+        }
+
+        styleComboBoxState(dealViewComboBox, true);
+    }
+
+    private DealRecord getSelectedDealRecord() {
+        if (ALL_DEALS_OPTION.equals(selectedDealSessionId)) {
+            return null;
+        }
+
+        for (DealRecord record : dealRecords) {
+            if (record.sessionId.equals(selectedDealSessionId)) {
+                return record;
+            }
+        }
+
+        return null;
+    }
+
+    private void updateDealDetailCard(DealRecord record) {
+        if (dealBuyerValue == null) {
+            return;
+        }
+
+        if (record == null) {
+            setDetailText(dealBuyerValue, "All buyers");
+            setDetailText(dealDealerValue, "All dealers");
+            setDetailText(dealVehicleValue, "All vehicles");
+            setDetailText(dealFinalPriceValue, "N/A");
+            setDetailText(dealRoundsValue, String.valueOf(totalRecordedRounds()));
+            setDetailText(dealStrategyValue, "Mixed");
+            setDetailText(dealStatusValue, "Aggregated");
+            setDetailText(dealFeeValue, formatRM(fixedFees));
+            setDetailText(dealCommissionValue, formatRM(commissions));
+            return;
+        }
+
+        setDetailText(dealBuyerValue, record.buyerName);
+        setDetailText(dealDealerValue, record.dealerName);
+        setDetailText(dealVehicleValue, record.vehicle);
+        setDetailText(dealFinalPriceValue, record.finalPrice > 0 ? formatRM(record.finalPrice) : "N/A");
+        setDetailText(dealRoundsValue, String.valueOf(record.rounds.size()));
+        setDetailText(dealStrategyValue, record.dealerStrategy);
+        setDetailText(dealStatusValue, record.status);
+        setDetailText(dealFeeValue, formatRM(record.brokerFee));
+        setDetailText(dealCommissionValue, formatRM(record.commission));
+    }
+
+    private int totalRecordedRounds() {
+        int total = 0;
+        for (DealRecord record : dealRecords) {
+            total += record.rounds.size();
+        }
+        return total;
+    }
+
+    private java.util.List<DealRound> getVisibleChartRounds() {
+        DealRecord selected = getSelectedDealRecord();
+        if (selected != null) {
+            return new ArrayList<>(selected.rounds);
+        }
+
+        java.util.List<DealRound> rounds = new ArrayList<>();
+        for (DealRecord record : dealRecords) {
+            rounds.addAll(record.rounds);
+        }
+
+        if (!rounds.isEmpty()) {
+            return rounds;
+        }
+
+        for (int i = 0; i < Math.min(buyerOfferHistory.size(), dealerAskHistory.size()); i++) {
+            rounds.add(new DealRound(i, buyerOfferHistory.get(i), dealerAskHistory.get(i)));
+        }
+
+        return rounds;
+    }
+
+    private void setDetailText(JLabel label, String text) {
+        label.setText(text);
+        label.setToolTipText(text);
     }
 
     public void appendFeed(String source, String message) {
@@ -1410,7 +1986,7 @@ public class AuctionDashboard extends JFrame {
                     formatRM(maxBudget),
                     String.valueOf(rounds)
             });
-            appendFeed(agentName, "Joined the floor for " + make + " " + model + ".");
+            appendFeed(agentName, "Joined the broker platform for " + make + " " + model + ".");
         });
     }
 
@@ -1557,8 +2133,7 @@ public class AuctionDashboard extends JFrame {
         JPanel header = createCardHeader(title, subtitle);
 
         JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(215, 215, 215)));
-        scrollPane.getViewport().setBackground(TABLE_BG);
+        styleScrollPane(scrollPane, TABLE_BG);
         scrollPane.getVerticalScrollBar().setUnitIncrement(18);
 
         card.add(header, BorderLayout.NORTH);
@@ -1576,6 +2151,93 @@ public class AuctionDashboard extends JFrame {
         card.add(chart, BorderLayout.CENTER);
 
         return card;
+    }
+
+    private JPanel createNegotiationChartCard() {
+        RoundPanel card = createRoundPanel(new BorderLayout(), CARD_BG, ACCENT_DARK, 0);
+        card.setBorder(new EmptyBorder(12, 14, 12, 14));
+
+        JLabel titleLabel = createLabel("Negotiation Gap Chart", TEXT_MAIN, new Font("Serif", Font.BOLD, 19));
+        JPanel chartBody = new JPanel(new BorderLayout(0, 8));
+        chartBody.setOpaque(false);
+        chartBody.add(negotiationGapChart, BorderLayout.CENTER);
+        chartBody.add(chartPointDetailLabel, BorderLayout.SOUTH);
+
+        card.add(titleLabel, BorderLayout.NORTH);
+        card.add(chartBody, BorderLayout.CENTER);
+
+        return card;
+    }
+
+    private JPanel createDealSelectionPanel() {
+        RoundPanel panel = createRoundPanel(new BorderLayout(12, 0), CARD_BG, ACCENT_DARK, 0);
+        panel.setBorder(new EmptyBorder(10, 12, 10, 12));
+
+        JLabel label = createLabel("View Deal", TEXT_MUTED, smallBoldFont);
+        dealViewComboBox = createComboBox(new String[] {ALL_DEALS_OPTION});
+        dealViewComboBox.setPreferredSize(new Dimension(10, 34));
+        dealViewComboBox.addActionListener(e -> {
+            Object selected = dealViewComboBox.getSelectedItem();
+            String option = selected == null ? ALL_DEALS_OPTION : selected.toString();
+            selectedDealSessionId = dealOptionSessionIds.getOrDefault(option, ALL_DEALS_OPTION);
+            updateDealDetailCard(getSelectedDealRecord());
+            repaintCharts();
+        });
+
+        panel.add(label, BorderLayout.WEST);
+        panel.add(dealViewComboBox, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private JPanel createDealDetailsPanel() {
+        RoundPanel panel = createRoundPanel(new BorderLayout(0, 8), CARD_BG, ACCENT_DARK, 0);
+        panel.setBorder(new EmptyBorder(12, 12, 12, 12));
+        panel.setPreferredSize(new Dimension(10, 150));
+        panel.setMinimumSize(new Dimension(10, 150));
+
+        JLabel title = createLabel("Deal Detail", TEXT_MAIN, bodyBoldFont);
+        JPanel grid = new JPanel(new GridLayout(3, 3, 12, 8));
+        grid.setOpaque(false);
+
+        dealBuyerValue = createDetailValueLabel("All buyers");
+        dealDealerValue = createDetailValueLabel("All dealers");
+        dealVehicleValue = createDetailValueLabel("All vehicles");
+        dealFinalPriceValue = createDetailValueLabel("N/A");
+        dealRoundsValue = createDetailValueLabel("N/A");
+        dealStrategyValue = createDetailValueLabel("Mixed");
+        dealStatusValue = createDetailValueLabel("Aggregated");
+        dealFeeValue = createDetailValueLabel(formatRM(0));
+        dealCommissionValue = createDetailValueLabel(formatRM(0));
+
+        grid.add(createDetailCell("Buyer", dealBuyerValue));
+        grid.add(createDetailCell("Dealer", dealDealerValue));
+        grid.add(createDetailCell("Vehicle", dealVehicleValue));
+        grid.add(createDetailCell("Final Price", dealFinalPriceValue));
+        grid.add(createDetailCell("Rounds", dealRoundsValue));
+        grid.add(createDetailCell("Strategy", dealStrategyValue));
+        grid.add(createDetailCell("Status", dealStatusValue));
+        grid.add(createDetailCell("Broker Fee", dealFeeValue));
+        grid.add(createDetailCell("Commission", dealCommissionValue));
+
+        panel.add(title, BorderLayout.NORTH);
+        panel.add(grid, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private JPanel createDetailCell(String labelText, JLabel valueLabel) {
+        JPanel cell = new JPanel(new BorderLayout(0, 1));
+        cell.setOpaque(false);
+        cell.add(createLabel(labelText, TEXT_MUTED, smallBoldFont), BorderLayout.NORTH);
+        cell.add(valueLabel, BorderLayout.CENTER);
+        return cell;
+    }
+
+    private JLabel createDetailValueLabel(String text) {
+        JLabel label = createLabel(text, TEXT_MAIN, bodyFont);
+        label.setToolTipText(text);
+        return label;
     }
 
     private JPanel createCardHeader(String title, String subtitle) {
@@ -1606,7 +2268,11 @@ public class AuctionDashboard extends JFrame {
         field.setFont(bodyFont);
         field.setForeground(TEXT_MAIN);
         field.setBackground(INPUT_BG);
+        field.setSelectionColor(SELECTION_BG);
+        field.setSelectedTextColor(TEXT_MAIN);
+        field.setDisabledTextColor(DISABLED_TEXT);
         field.setCaretColor(TEXT_MAIN);
+        field.setOpaque(true);
         field.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(57, 64, 78)),
                 new EmptyBorder(5, 10, 5, 10)
@@ -1623,20 +2289,30 @@ public class AuctionDashboard extends JFrame {
         comboBox.setForeground(TEXT_MAIN);
         comboBox.setBackground(INPUT_BG);
         comboBox.setOpaque(true);
+        comboBox.setFocusable(false);
+        comboBox.setMaximumRowCount(10);
         comboBox.setBorder(BorderFactory.createLineBorder(new Color(57, 64, 78)));
         comboBox.setMinimumSize(new Dimension(10, 30));
         comboBox.setPreferredSize(new Dimension(10, 30));
         comboBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
 
         comboBox.setRenderer((list, value, index, isSelected, cellHasFocus) -> {
-            JLabel label = new JLabel(value == null ? "" : value.toString());
+            JLabel label = (JLabel) new DefaultListCellRenderer().getListCellRendererComponent(
+                    list,
+                    value == null ? "" : value.toString(),
+                    index,
+                    isSelected,
+                    cellHasFocus
+            );
             label.setOpaque(true);
             label.setFont(bodyFont);
             label.setBorder(new EmptyBorder(6, 10, 6, 10));
-            label.setForeground(TEXT_MAIN);
-            label.setBackground(isSelected ? BUTTON_DARK : INPUT_BG);
+            boolean enabled = comboBox.isEnabled();
+            label.setForeground(enabled ? TEXT_MAIN : DISABLED_TEXT);
+            label.setBackground(isSelected && enabled ? SELECTION_BG : (enabled ? INPUT_BG : DISABLED_BG));
             return label;
         });
+        styleComboBoxState(comboBox, true);
 
         return comboBox;
     }
@@ -1645,14 +2321,45 @@ public class AuctionDashboard extends JFrame {
         JButton button = new JButton(text);
         button.setFont(bodyBoldFont);
         button.setFocusPainted(false);
+        button.setFocusable(false);
         button.setOpaque(true);
+        button.setContentAreaFilled(true);
+        button.setBorderPainted(false);
+        button.setRolloverEnabled(false);
         button.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
-        button.setBackground(background);
-        button.setForeground(foreground);
         button.setMinimumSize(new Dimension(120, height));
         button.setPreferredSize(new Dimension(160, height));
         button.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+        styleButtonState(button, true, background, foreground);
         return button;
+    }
+
+    private void styleButtonState(JButton button, boolean enabled, Color background, Color foreground) {
+        button.setEnabled(enabled);
+        button.setOpaque(true);
+        button.setContentAreaFilled(true);
+        button.setBackground(enabled ? background : DISABLED_BG);
+        button.setForeground(enabled ? foreground : DISABLED_TEXT);
+    }
+
+    private void styleComboBoxState(JComboBox<String> comboBox, boolean enabled) {
+        comboBox.setEnabled(enabled);
+        comboBox.setOpaque(true);
+        comboBox.setBackground(enabled ? INPUT_BG : DISABLED_BG);
+        comboBox.setForeground(enabled ? TEXT_MAIN : DISABLED_TEXT);
+        comboBox.repaint();
+    }
+
+    private void styleScrollPane(JScrollPane scrollPane, Color viewportBackground) {
+        scrollPane.setOpaque(true);
+        scrollPane.setBackground(PANEL_BG);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(57, 64, 78)));
+        scrollPane.getViewport().setOpaque(true);
+        scrollPane.getViewport().setBackground(viewportBackground);
+        scrollPane.getVerticalScrollBar().setBackground(INPUT_BG);
+        scrollPane.getHorizontalScrollBar().setBackground(INPUT_BG);
+        scrollPane.getVerticalScrollBar().setForeground(TEXT_MAIN);
+        scrollPane.getHorizontalScrollBar().setForeground(TEXT_MAIN);
     }
 
     private void addFormRow(JPanel panel, String labelText, Component input) {
@@ -1684,19 +2391,40 @@ public class AuctionDashboard extends JFrame {
         table.setForeground(TEXT_MAIN);
         table.setBackground(TABLE_BG);
         table.setGridColor(new Color(47, 54, 65));
-        table.setSelectionBackground(new Color(63, 73, 89));
+        table.setSelectionBackground(SELECTION_BG);
         table.setSelectionForeground(TEXT_MAIN);
         table.setFillsViewportHeight(true);
+        table.setOpaque(true);
+        table.setShowGrid(true);
+        table.setIntercellSpacing(new Dimension(1, 1));
+        table.setFocusable(false);
 
         table.getTableHeader().setFont(bodyBoldFont);
         table.getTableHeader().setForeground(TEXT_MAIN);
         table.getTableHeader().setBackground(TABLE_HEADER_BG);
+        table.getTableHeader().setOpaque(true);
+        table.getTableHeader().setBorder(BorderFactory.createLineBorder(new Color(57, 64, 78)));
         table.getTableHeader().setReorderingAllowed(false);
 
-        DefaultTableCellRenderer renderer = new DefaultTableCellRenderer();
-        renderer.setBackground(TABLE_BG);
-        renderer.setForeground(TEXT_MAIN);
-        renderer.setBorder(new EmptyBorder(0, 4, 0, 4));
+        DefaultTableCellRenderer renderer = new DefaultTableCellRenderer() {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public Component getTableCellRendererComponent(
+                    JTable table,
+                    Object value,
+                    boolean isSelected,
+                    boolean hasFocus,
+                    int row,
+                    int column
+            ) {
+                Component component = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                component.setForeground(TEXT_MAIN);
+                component.setBackground(isSelected ? SELECTION_BG : TABLE_BG);
+                setBorder(new EmptyBorder(0, 4, 0, 4));
+                return component;
+            }
+        };
 
         for (int i = 0; i < table.getColumnCount(); i++) {
             table.getColumnModel().getColumn(i).setCellRenderer(renderer);
@@ -1709,6 +2437,41 @@ public class AuctionDashboard extends JFrame {
         RoundPanel panel = new RoundPanel(background, border, arc);
         panel.setLayout(layout);
         return panel;
+    }
+
+    private String nextDemoName(Map<String, Integer> counters, String prefix, String role) {
+        int next = Math.max(counters.getOrDefault(prefix, 0), maxExistingDemoSuffix(prefix, role)) + 1;
+        String agentName = prefix + role + String.format(Locale.US, "%02d", next);
+
+        while (agentTypes.containsKey(agentName)) {
+            next++;
+            agentName = prefix + role + String.format(Locale.US, "%02d", next);
+        }
+
+        counters.put(prefix, next);
+        return agentName;
+    }
+
+    private int maxExistingDemoSuffix(String prefix, String role) {
+        int max = 0;
+        String namePrefix = prefix + role;
+
+        for (String agentName : agentTypes.keySet()) {
+            if (!agentName.startsWith(namePrefix)) {
+                continue;
+            }
+
+            String suffix = agentName.substring(namePrefix.length());
+            try {
+                max = Math.max(max, Integer.parseInt(suffix));
+            } catch (NumberFormatException ignored) {
+                /*
+                 * Non-demo names that share the prefix do not affect numbering.
+                 */
+            }
+        }
+
+        return max;
     }
 
     private String cleanText(String text) {
@@ -1751,6 +2514,23 @@ public class AuctionDashboard extends JFrame {
             setBackground(TABLE_BG);
             setOpaque(true);
             setPreferredSize(new Dimension(10, 260));
+            setToolTipText("");
+            MouseAdapter pointInspector = new MouseAdapter() {
+                @Override
+                public void mouseMoved(MouseEvent e) {
+                    updatePointInspection(e.getX(), e.getY());
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    if (chartPointDetailLabel != null) {
+                        chartPointDetailLabel.setText("Hover near a point to inspect a negotiation round.");
+                    }
+                    setToolTipText("");
+                }
+            };
+            addMouseMotionListener(pointInspector);
+            addMouseListener(pointInspector);
         }
 
         @Override
@@ -1774,7 +2554,9 @@ public class AuctionDashboard extends JFrame {
             g2.drawLine(left, top, left, height - bottom);
             g2.drawLine(left, height - bottom, width - right, height - bottom);
 
-            if (buyerOfferHistory.isEmpty() || dealerAskHistory.isEmpty()) {
+            java.util.List<DealRound> rounds = getVisibleChartRounds();
+
+            if (rounds.isEmpty()) {
                 g2.setColor(TEXT_MUTED);
                 g2.setFont(bodyFont);
                 g2.drawString("Run a negotiation to display Buyer Offer vs Dealer Ask.", left + 10, top + 55);
@@ -1785,22 +2567,17 @@ public class AuctionDashboard extends JFrame {
             double max = 0;
             double min = Double.MAX_VALUE;
 
-            for (double value : buyerOfferHistory) {
-                max = Math.max(max, value);
-                min = Math.min(min, value);
-            }
-
-            for (double value : dealerAskHistory) {
-                max = Math.max(max, value);
-                min = Math.min(min, value);
+            for (DealRound round : rounds) {
+                max = Math.max(max, Math.max(round.buyerOffer, round.dealerAsk));
+                min = Math.min(min, Math.min(round.buyerOffer, round.dealerAsk));
             }
 
             if (max <= min) {
                 max = min + 1;
             }
 
-            drawLineSeries(g2, buyerOfferHistory, min, max, left, top, width - right, height - bottom, GREEN);
-            drawLineSeries(g2, dealerAskHistory, min, max, left, top, width - right, height - bottom, ACCENT);
+            drawLineSeries(g2, rounds, min, max, left, top, width - right, height - bottom, GREEN, true);
+            drawLineSeries(g2, rounds, min, max, left, top, width - right, height - bottom, ACCENT, false);
 
             g2.setFont(bodyFont);
             g2.setColor(GREEN);
@@ -1818,18 +2595,20 @@ public class AuctionDashboard extends JFrame {
 
         private void drawLineSeries(
                 Graphics2D g2,
-                java.util.List<Double> values,
+                java.util.List<DealRound> rounds,
                 double min,
                 double max,
                 int left,
                 int top,
                 int right,
                 int bottom,
-                Color color
+                Color color,
+                boolean buyerLine
         ) {
-            if (values.size() == 1) {
+            if (rounds.size() == 1) {
                 int x = left;
-                int y = scaleY(values.get(0), min, max, top, bottom);
+                double value = buyerLine ? rounds.get(0).buyerOffer : rounds.get(0).dealerAsk;
+                int y = scaleY(value, min, max, top, bottom);
                 g2.setColor(color);
                 g2.fillOval(x - 4, y - 4, 8, 8);
                 return;
@@ -1841,9 +2620,11 @@ public class AuctionDashboard extends JFrame {
             int previousX = 0;
             int previousY = 0;
 
-            for (int i = 0; i < values.size(); i++) {
-                int x = left + (int) ((right - left) * (i / (double) (values.size() - 1)));
-                int y = scaleY(values.get(i), min, max, top, bottom);
+            for (int i = 0; i < rounds.size(); i++) {
+                DealRound round = rounds.get(i);
+                double value = buyerLine ? round.buyerOffer : round.dealerAsk;
+                int x = left + (int) ((right - left) * (i / (double) (rounds.size() - 1)));
+                int y = scaleY(value, min, max, top, bottom);
 
                 g2.fillOval(x - 4, y - 4, 8, 8);
 
@@ -1859,6 +2640,70 @@ public class AuctionDashboard extends JFrame {
         private int scaleY(double value, double min, double max, int top, int bottom) {
             double ratio = (value - min) / (max - min);
             return bottom - (int) ((bottom - top) * ratio);
+        }
+
+        private void updatePointInspection(int mouseX, int mouseY) {
+            java.util.List<DealRound> rounds = getVisibleChartRounds();
+            if (rounds.isEmpty()) {
+                return;
+            }
+
+            int width = getWidth();
+            int height = getHeight();
+            int left = 55;
+            int right = 25;
+            int top = 30;
+            int bottom = 55;
+            int chartRight = width - right;
+            int chartBottom = height - bottom;
+
+            double max = 0;
+            double min = Double.MAX_VALUE;
+            for (DealRound round : rounds) {
+                max = Math.max(max, Math.max(round.buyerOffer, round.dealerAsk));
+                min = Math.min(min, Math.min(round.buyerOffer, round.dealerAsk));
+            }
+
+            if (max <= min) {
+                max = min + 1;
+            }
+
+            DealRound closest = null;
+            double bestDistance = Double.MAX_VALUE;
+
+            for (int i = 0; i < rounds.size(); i++) {
+                DealRound round = rounds.get(i);
+                int x = rounds.size() == 1
+                        ? left
+                        : left + (int) ((chartRight - left) * (i / (double) (rounds.size() - 1)));
+                int buyerY = scaleY(round.buyerOffer, min, max, top, chartBottom);
+                int dealerY = scaleY(round.dealerAsk, min, max, top, chartBottom);
+                double distance = Math.min(
+                        mousePointDistance(mouseX, mouseY, x, buyerY),
+                        mousePointDistance(mouseX, mouseY, x, dealerY)
+                );
+
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    closest = round;
+                }
+            }
+
+            if (closest != null && bestDistance <= 24.0) {
+                String detail = "Round " + closest.round + " | Buyer " + formatRM(closest.buyerOffer)
+                        + " | Dealer " + formatRM(closest.dealerAsk)
+                        + " | Gap " + formatRM(Math.max(0.0, closest.dealerAsk - closest.buyerOffer));
+                setToolTipText(detail);
+                if (chartPointDetailLabel != null) {
+                    chartPointDetailLabel.setText(detail);
+                }
+            }
+        }
+
+        private double mousePointDistance(int mouseX, int mouseY, int pointX, int pointY) {
+            int dx = mouseX - pointX;
+            int dy = mouseY - pointY;
+            return Math.sqrt((dx * dx) + (dy * dy));
         }
     }
 
@@ -1943,6 +2788,90 @@ public class AuctionDashboard extends JFrame {
         }
     }
 
+    private static final class DemoVehiclePreset {
+        private final String namePrefix;
+        private final String make;
+        private final String model;
+        private final int year;
+        private final double price;
+
+        private DemoVehiclePreset(String namePrefix, String make, String model, int year, double price) {
+            this.namePrefix = namePrefix;
+            this.make = make;
+            this.model = model;
+            this.year = year;
+            this.price = price;
+        }
+
+        private boolean matchesDealer(DealerListing dealer) {
+            return make.equalsIgnoreCase(dealer.make)
+                    && model.equalsIgnoreCase(dealer.model)
+                    && year == dealer.year;
+        }
+
+        private boolean matchesBuyer(BuyerRequest buyer) {
+            return make.equalsIgnoreCase(buyer.make)
+                    && model.equalsIgnoreCase(buyer.model);
+        }
+    }
+
+    private static final class DealRound {
+        private final int round;
+        private final double buyerOffer;
+        private final double dealerAsk;
+
+        private DealRound(int round, double buyerOffer, double dealerAsk) {
+            this.round = round;
+            this.buyerOffer = buyerOffer;
+            this.dealerAsk = dealerAsk;
+        }
+    }
+
+    private final class DealRecord {
+        private final String sessionId;
+        private final String buyerName;
+        private final String dealerName;
+        private final String vehicle;
+        private final double finalPrice;
+        private final java.util.List<DealRound> rounds;
+        private final String dealerStrategy;
+        private final String status;
+        private final double brokerFee;
+        private final double commission;
+
+        private DealRecord(
+                String sessionId,
+                String buyerName,
+                String dealerName,
+                String vehicle,
+                double finalPrice,
+                java.util.List<DealRound> rounds,
+                String dealerStrategy,
+                String status,
+                double brokerFee,
+                double commission
+        ) {
+            this.sessionId = sessionId;
+            this.buyerName = buyerName;
+            this.dealerName = dealerName;
+            this.vehicle = vehicle;
+            this.finalPrice = finalPrice;
+            this.rounds = new ArrayList<>(rounds);
+            this.dealerStrategy = dealerStrategy;
+            this.status = status;
+            this.brokerFee = brokerFee;
+            this.commission = commission;
+        }
+
+        private boolean isCompleted() {
+            return "Closed".equalsIgnoreCase(status);
+        }
+
+        private String optionLabel() {
+            return buyerName + " \u2194 " + dealerName + " | " + vehicle + " | " + formatRM(finalPrice);
+        }
+    }
+
     private static final class DealerListing {
         private final String agentName;
         private final String make;
@@ -2022,6 +2951,7 @@ public class AuctionDashboard extends JFrame {
             this.backgroundColor = backgroundColor;
             this.borderColor = borderColor;
             this.arc = arc;
+            setBackground(backgroundColor);
             setOpaque(false);
         }
 
@@ -2093,6 +3023,7 @@ public class AuctionDashboard extends JFrame {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
+            AuctionDashboard.installCrossPlatformLookAndFeel();
             AuctionDashboard dashboard = new AuctionDashboard();
             dashboard.setVisible(true);
 

@@ -44,7 +44,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Visual analytics section for the auction dashboard.
+ * Visual analytics section for the negotiation dashboard.
  *
  * This panel adds:
  * 1. real-time negotiation line chart

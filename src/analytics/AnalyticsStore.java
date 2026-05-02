@@ -26,7 +26,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * The Swing GUI draws charts.
  * This class sits in the middle and stores structured analytics data.
  *
- * It avoids the bad practice of parsing text from the Live Auction Feed.
+ * It avoids the bad practice of parsing text from the Live Negotiation Feed.
  */
 public final class AnalyticsStore {
 
