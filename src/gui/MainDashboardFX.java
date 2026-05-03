@@ -71,7 +71,33 @@ public class MainDashboardFX extends Application {
 
         // --- Center Area (SplitPane) ---
         logList = new ListView<>();
-        logList.setStyle("-fx-control-inner-background: #1e1e22; -fx-text-fill: #96fa96; -fx-font-family: 'Consolas';");
+        logList.setStyle("-fx-control-inner-background: #1e1e22; -fx-font-family: 'Consolas';");
+        
+        // --- NEW: COLORED LOG CELL FACTORY ---
+        logList.setCellFactory(lv -> new javafx.scene.control.ListCell<String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    setText(item);
+                    if (item.contains("[SYSTEM]")) {
+                        setStyle("-fx-text-fill: #96fa96; -fx-background-color: #1e1e22;"); // Bright Green
+                    } else if (item.contains("[BROKER]")) {
+                        setStyle("-fx-text-fill: #fbc02d; -fx-background-color: #1e1e22;"); // Yellow/Gold
+                    } else if (item.contains("[AutoBuyer_") || item.contains("[ManualBuyer_")) {
+                        setStyle("-fx-text-fill: #ff6b81; -fx-background-color: #1e1e22;"); // Pink
+                    } else if (item.contains("[Dealer_")) {
+                        setStyle("-fx-text-fill: #4daafc; -fx-background-color: #1e1e22;"); // Blue
+                    } else {
+                        setStyle("-fx-text-fill: #a0a0ab; -fx-background-color: #1e1e22;"); // Gray default
+                    }
+                }
+            }
+        });
+        // -------------------------------------
         
         analyticsPanel = new VisualAnalyticsFX();
 
@@ -92,7 +118,20 @@ public class MainDashboardFX extends Application {
         btnResetMarket.setOnAction(e -> resetMarket());
         btnReport.setOnAction(e -> {
             if (agents.BrokerAgent.instance != null) {
-                agents.BrokerAgent.instance.generateReport();
+                String report = agents.BrokerAgent.instance.generateReport();
+                
+                javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION);
+                alert.setTitle("Final Market Analytics Report");
+                alert.setHeaderText("Market Summary & Broker Earnings");
+                alert.setContentText(report);
+                
+                // Styling the Alert to match the dark theme
+                alert.getDialogPane().setStyle("-fx-background-color: #2a2a35;");
+                alert.getDialogPane().lookup(".content.label").setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
+                alert.getDialogPane().lookup(".header-panel").setStyle("-fx-background-color: #1565c0;");
+                alert.getDialogPane().lookup(".header-panel .label").setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+                
+                alert.showAndWait();
             } else {
                 log("SYSTEM", "Broker is offline. Spawn the Broker first!");
             }

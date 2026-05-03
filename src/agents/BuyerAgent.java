@@ -161,7 +161,7 @@ private void setupNegotiationResponder() {
 
                     // NEW ONTOLOGY EXTRACTION
                     String dealerCar = "Unknown";
-                    double dealerPrice = 0.0;
+                    float dealerPrice = 0.0f;
                     int dealerWarranty = 0;
 
                     try {
@@ -197,7 +197,7 @@ private void setupNegotiationResponder() {
 
                 // NEW ONTOLOGY EXTRACTION
                 String dealerCar = "Unknown";
-                double dealerPrice = 0.0;
+                float dealerPrice = 0.0f;
                 int dealerWarranty = 0;
 
                 try {
@@ -224,7 +224,7 @@ private void setupNegotiationResponder() {
                     // NEW ONTOLOGY FILL
                     CarOffer finalProposal = new CarOffer();
                     finalProposal.setCarModel(dealerCar);
-                    finalProposal.setPrice(dealerPrice);
+                    finalProposal.setPrice((float) dealerPrice);
                     finalProposal.setWarranty(dealerWarranty);
                     Action act = new Action(cfp.getSender(), finalProposal);
                     try {
@@ -246,7 +246,7 @@ private void setupNegotiationResponder() {
                     // NEW ONTOLOGY FILL
                     CarOffer counter = new CarOffer();
                     counter.setCarModel(dealerCar);
-                    counter.setPrice(myOffer);
+                    counter.setPrice((float) myOffer);
                     counter.setWarranty(myWarranty);
                     Action act = new Action(cfp.getSender(), counter);
                     try {

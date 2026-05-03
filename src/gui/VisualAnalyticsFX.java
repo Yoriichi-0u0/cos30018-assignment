@@ -52,6 +52,7 @@ public class VisualAnalyticsFX extends VBox {
         // 1. Setup the Negotiation Tabs (Right Side)
         chartsContainer = new TabPane();
         chartsContainer.setStyle("-fx-background-color: transparent;");
+        chartsContainer.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
 
         // 2. Setup the Fixed Ledger (Left Side)
         setupLedgerPanel(); 
@@ -149,6 +150,27 @@ public class VisualAnalyticsFX extends VBox {
         NumberAxis xAxis = new NumberAxis();
         xAxis.setLabel("Round");
         xAxis.setTickLabelFill(javafx.scene.paint.Color.web("#a0a0ab"));
+
+        // --- NEW: FORCING DISCRETE ROUNDS (WHOLE NUMBERS) ---
+        xAxis.setMinorTickVisible(false);
+        xAxis.setForceZeroInRange(true);
+        xAxis.setTickUnit(1);
+        xAxis.setTickLabelFormatter(new javafx.util.StringConverter<Number>() {
+            @Override
+            public String toString(Number object) {
+                if (object.doubleValue() % 1 == 0) {
+                    return String.format("%.0f", object.doubleValue());
+                } else {
+                    return "";
+                }
+            }
+
+            @Override
+            public Number fromString(String string) {
+                return Double.parseDouble(string);
+            }
+        });
+        // --------------------------------------------------
 
         NumberAxis yAxis = new NumberAxis();
         yAxis.setLabel("Price (RM)");

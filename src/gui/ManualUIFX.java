@@ -20,7 +20,7 @@ public class ManualUIFX {
 private static int windowOffset = 0; 
 
 // NEW: Asynchronous floating window method including car model
-public static void spawnFloatingWindow(Agent agent, ACLMessage cfp, String carModel, double dealerPrice, int dealerWarranty, double maxBudget) {
+public static void spawnFloatingWindow(Agent agent, ACLMessage cfp, String carModel, float dealerPrice, int dealerWarranty, double maxBudget) {
     Platform.runLater(() -> {
         Stage stage = new Stage();
         stage.setTitle("Nego: " + cfp.getSender().getLocalName());
@@ -73,7 +73,7 @@ public static void spawnFloatingWindow(Agent agent, ACLMessage cfp, String carMo
 
         btnCounter.setOnAction(e -> {
             try {
-                double price = Double.parseDouble(priceInput.getText());
+                float price = Float.parseFloat(priceInput.getText());
                 int warranty = Integer.parseInt(warrantyInput.getText());
                 
                 // NEW: Use Ontology to build the reply

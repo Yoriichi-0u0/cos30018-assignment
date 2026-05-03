@@ -134,7 +134,7 @@ public class DealerAgent extends Agent {
         
         CarOffer initialOffer = new CarOffer();
         initialOffer.setCarModel(myCarModel);
-        initialOffer.setPrice(currentPrice);
+        initialOffer.setPrice((float) currentPrice);
         initialOffer.setWarranty(currentWarranty);
 
         Action act = new Action(buyer, initialOffer);
@@ -155,7 +155,7 @@ public class DealerAgent extends Agent {
                 if (reply.getPerformative() == ACLMessage.PROPOSE) {
                     
                     // NEW ONTOLOGY EXTRACTION
-                    double buyerOffer = 0.0;
+                    float buyerOffer = 0.0f;
                     int buyerWarrantyReq = 0;
 
                     try {
@@ -171,17 +171,6 @@ public class DealerAgent extends Agent {
 
                     if (buyerOffer >= minPrice && buyerWarrantyReq <= myMaxWarranty) {
                         
-                        synchronized (agents.BrokerAgent.securedBuyers) {
-                            if (agents.BrokerAgent.securedBuyers.contains(responder.getLocalName())) {
-                                MainDashboardFX.getInstance().log(getLocalName(), "[TRANSACTION VOIDED] " + responder.getLocalName() + " already bought a car elsewhere! Cancelling deal.");
-                                ACLMessage reject = reply.createReply();
-                                reject.setPerformative(ACLMessage.REJECT_PROPOSAL);
-                                acceptances.add(reject);
-                                return; 
-                            }
-                            agents.BrokerAgent.securedBuyers.add(responder.getLocalName());
-                        }
-
                         // UPDATED: Pass car model down for the successful deal!
                         MainDashboardFX.getInstance().updateAnalytics(responder.getLocalName(), getLocalName(), myCarModel, round, buyerOffer, buyerOffer, buyerWarrantyReq, buyerWarrantyReq);
                         
@@ -232,16 +221,8 @@ public class DealerAgent extends Agent {
                         ACLMessage reject = reply.createReply();
                         reject.setPerformative(ACLMessage.REJECT_PROPOSAL);
                         
-                        // NEW ONTOLOGY FILL FOR COUNTER-OFFER
-                        CarOffer counter = new CarOffer();
-                        counter.setCarModel(myCarModel);
-                        counter.setPrice(myPrice);
-                        counter.setWarranty(myWarranty);
-                        Action counterAct = new Action(responder, counter);
-                        try {
-                            myAgent.getContentManager().fillContent(reject, counterAct);
-                        } catch (Exception ex) { ex.printStackTrace(); }
-                        
+                        // DO NOT pack the CarOffer object into this message! 
+                        // Just send the rejection as a blank notification.
                         acceptances.add(reject);
                         
                         initiateNegotiation(responder, round + 1);

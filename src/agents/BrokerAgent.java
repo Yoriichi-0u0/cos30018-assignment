@@ -36,9 +36,6 @@ public class BrokerAgent extends Agent {
     // NEW: The Broker's Analytics Memory (Car Model -> List of Prices)
     private Map<String, List<Double>> marketData = new HashMap<>();
 
-    // Global Title Registry to prevent double-buying across concurrent negotiations
-    public static Set<String> securedBuyers = new HashSet<>();
-
     private Map<AID, String> inventoryCatalog = new HashMap<>();
     private double commissionRate = 0.02; // 2% commission
     private double negotiationFee = 50.0; // Fixed fee per negotiation
@@ -56,7 +53,6 @@ public class BrokerAgent extends Agent {
         getContentManager().registerLanguage(codec);
         getContentManager().registerOntology(ontology);
 
-        securedBuyers.clear(); // Reset market lock for new simulation runs
         registerWithDF();
 
         addBehaviour(new CyclicBehaviour() {
@@ -157,7 +153,7 @@ public class BrokerAgent extends Agent {
     }
 
     // NEW: Generates the Analytics Report
-    public void generateReport() {
+    public String generateReport() {
         StringBuilder report = new StringBuilder("\n📊 === BROKER MARKET ANALYTICS REPORT === 📊\n");
 
         if (marketData.isEmpty()) {
@@ -181,6 +177,7 @@ public class BrokerAgent extends Agent {
         report.append(String.format("\nTotal Commission Earned: RM %,.2f", totalCommission));
         report.append(String.format("\nTotal Broker Earnings: RM %,.2f", totalFees + totalCommission));
         report.append("\n=============================================");
-        MainDashboardFX.getInstance().log("BROKER", report.toString());
+        
+        return report.toString();
     }
 }
